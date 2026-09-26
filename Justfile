@@ -218,21 +218,25 @@ validate:
 # (_git_utils.py's CONNECTION_ERRORS handling never sets temporary=True), so
 # BuildStream's own --network-retries scheduler-level retry never triggers
 # for it; passing that flag would build without ever actually retrying this
-# failure. Retry the whole `bst build` invocation from the outside instead.
+# failure. Retry the *fetch* from the outside instead, then build once, so a
+# deterministic build failure (compile error, bad ref, stale patch) still
+# reports red on the first attempt instead of being rebuilt five times.
 [group('build')]
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "==> Building oci/{{image_name}}.bst with BuildStream..."
+    echo "==> Fetching sources for oci/{{image_name}}.bst..."
     for attempt in 1 2 3 4 5; do
-        if just bst build "oci/{{image_name}}.bst"; then
-            just export
-            exit 0
+        if just bst source fetch --deps all "oci/{{image_name}}.bst"; then
+            break
         fi
-        echo "bst build failed (attempt ${attempt}/5)" >&2
-        if [[ "$attempt" -lt 5 ]]; then sleep 15; fi
+        echo "bst source fetch failed (attempt ${attempt}/5)" >&2
+        if [[ "$attempt" -eq 5 ]]; then exit 1; fi
+        sleep 15
     done
-    exit 1
+    echo "==> Building oci/{{image_name}}.bst with BuildStream..."
+    just bst build "oci/{{image_name}}.bst"
+    just export
 
 # ── Export ────────────────────────────────────────────────────────────
 # Checkout the built OCI image and squash into a single layer in podman.
@@ -773,9 +777,11 @@ printing-base-bundle TAG:
     # patch moved (foomatic-db). Only those built artifacts are bundled.
     # Consumers pull the rest from the same remotes, so no `--deps all` pull is
     # needed. Sources come from cache.projectbluefin.io or upstream, because
-    # the FSDK source cache stalls.
+    # the FSDK source cache stalls. No `--network-retries` here: it only retries
+    # errors raised with temporary=True, which the git_repo source plugin never
+    # does (see docs/skills/ci-tooling/SKILL.md).
     targets=(printing/base.bst printing/foomatic-db.bst)
-    just bst --network-retries 5 build \
+    just bst build \
         --ignore-project-source-remotes \
         --source-remote url=https://cache.projectbluefin.io:11001,push=false \
         "${targets[@]}"

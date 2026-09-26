@@ -278,7 +278,7 @@ FAIL: guest did not reach its ready point within 300s
       (serial console uploaded as artifact 'vm-boot-serial-x86_64')
 ```
 
-### Transient `gnome-build-meta` fetch timeouts — retry the whole `bst build`
+### Transient `gnome-build-meta` fetch timeouts — retry `bst source fetch`
 
 A `just build`/`just verify` matrix leg can fail with:
 
@@ -294,26 +294,29 @@ and the `gnome-build-meta` junction uses the `git_repo` source plugin
 (`buildstream-plugins-community`), whose `_git_utils.py` raises fetch failures
 (including this read timeout) as `SourceError` with the default
 `temporary=False`. So passing the flag builds without ever actually retrying
-the failure — `printing-base-bundle` carries the same flag for the same
-reason and has the same gap.
+the failure. `printing-base-bundle` carried the same flag for the same reason;
+it has been dropped there.
 
-Retry the whole `bst build` invocation from the outside instead, the way the
-`build` recipe does and the way `ps-printer-app`'s `fetch` recipe retries
-`bst source fetch`:
+Retry the *fetch* from the outside instead, then build once — the way
+`ps-printer-app`'s `fetch` recipe does. Do **not** wrap `bst build` itself in
+the retry loop: that also retries deterministic failures (compile error, bad
+ref, stale patch), rebuilding the failing element up to five times and risking
+the 180-minute job timeout before the leg reports red.
 
 ```just
 for attempt in 1 2 3 4 5; do
-    if just bst build "oci/{{image_name}}.bst"; then
-        exit 0
+    if just bst source fetch --deps all "oci/{{image_name}}.bst"; then
+        break
     fi
-    echo "bst build failed (attempt ${attempt}/5)" >&2
-    if [[ "$attempt" -lt 5 ]]; then sleep 15; fi
+    echo "bst source fetch failed (attempt ${attempt}/5)" >&2
+    if [[ "$attempt" -eq 5 ]]; then exit 1; fi
+    sleep 15
 done
-exit 1
+just bst build "oci/{{image_name}}.bst"
 ```
 
 If `validate` or `verify` start exhibiting the same intermittent failure,
-apply the same external retry loop there rather than reaching for
+apply the same external fetch retry loop there rather than reaching for
 `--network-retries`.
 
 ## Common Rationalizations
