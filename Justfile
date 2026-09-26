@@ -211,18 +211,28 @@ validate:
 
 # ── Build ─────────────────────────────────────────────────────────────
 # Build one OCI image (controlled by BUILD_IMAGE_NAME) and load into podman.
-# --network-retries 5: gitlab.gnome.org (the gnome-build-meta junction fetch)
-# intermittently hits BuildStream's fixed 30s git-fetch timeout under CI
-# network conditions (see #336). printing-base-bundle already carries this
-# flag for the same reason; apply it here too instead of failing the whole
-# matrix leg on a single transient read timeout.
+# gitlab.gnome.org (the gnome-build-meta junction fetch) intermittently hits
+# a read timeout under CI network conditions (see #336). That junction uses
+# the git_repo source plugin (buildstream-plugins-community), whose fetch
+# failures are raised as SourceError with temporary=False
+# (_git_utils.py's CONNECTION_ERRORS handling never sets temporary=True), so
+# BuildStream's own --network-retries scheduler-level retry never triggers
+# for it; passing that flag would build without ever actually retrying this
+# failure. Retry the whole `bst build` invocation from the outside instead.
 [group('build')]
 build:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Building oci/{{image_name}}.bst with BuildStream..."
-    just bst --network-retries 5 build "oci/{{image_name}}.bst"
-    just export
+    for attempt in 1 2 3 4 5; do
+        if just bst build "oci/{{image_name}}.bst"; then
+            just export
+            exit 0
+        fi
+        echo "bst build failed (attempt ${attempt}/5)" >&2
+        if [[ "$attempt" -lt 5 ]]; then sleep 15; fi
+    done
+    exit 1
 
 # ── Export ────────────────────────────────────────────────────────────
 # Checkout the built OCI image and squash into a single layer in podman.
