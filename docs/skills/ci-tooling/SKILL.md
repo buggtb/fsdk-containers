@@ -278,7 +278,7 @@ FAIL: guest did not reach its ready point within 300s
       (serial console uploaded as artifact 'vm-boot-serial-x86_64')
 ```
 
-### Transient `gnome-build-meta` fetch timeouts — pass `--network-retries`
+### Transient `gnome-build-meta` fetch timeouts — retry the whole `bst build`
 
 A `just build`/`just verify` matrix leg can fail with:
 
@@ -286,18 +286,35 @@ A `just build`/`just verify` matrix leg can fail with:
 failed to fetch: HTTPSConnectionPool(host='gitlab.gnome.org', port=443): Read timed out. (read timeout=30.0)
 ```
 
-This is BuildStream's fixed 30s git-fetch timeout tripping on a transient
-network blip while fetching the `gnome-build-meta` junction, not a code or
-config bug (#336). `just bst` already forwards flags ahead of the subcommand,
-so pass `--network-retries 5` the same way `printing-base-bundle` does:
+This is a transient network blip while fetching the `gnome-build-meta`
+junction, not a code or config bug (#336). **`--network-retries` does not fix
+this**, even though `just bst` forwards it ahead of the subcommand: BuildStream
+only retries a job when the underlying error is raised with `temporary=True`,
+and the `gnome-build-meta` junction uses the `git_repo` source plugin
+(`buildstream-plugins-community`), whose `_git_utils.py` raises fetch failures
+(including this read timeout) as `SourceError` with the default
+`temporary=False`. So passing the flag builds without ever actually retrying
+the failure — `printing-base-bundle` carries the same flag for the same
+reason and has the same gap.
+
+Retry the whole `bst build` invocation from the outside instead, the way the
+`build` recipe does and the way `ps-printer-app`'s `fetch` recipe retries
+`bst source fetch`:
 
 ```just
-just bst --network-retries 5 build "oci/{{image_name}}.bst"
+for attempt in 1 2 3 4 5; do
+    if just bst build "oci/{{image_name}}.bst"; then
+        exit 0
+    fi
+    echo "bst build failed (attempt ${attempt}/5)" >&2
+    if [[ "$attempt" -lt 5 ]]; then sleep 15; fi
+done
+exit 1
 ```
 
-The `build` recipe carries this flag; if `validate` or `verify` start
-exhibiting the same intermittent failure, apply it there too rather than
-adding a bespoke retry loop.
+If `validate` or `verify` start exhibiting the same intermittent failure,
+apply the same external retry loop there rather than reaching for
+`--network-retries`.
 
 ## Common Rationalizations
 
