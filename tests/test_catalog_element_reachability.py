@@ -133,6 +133,9 @@ class ElementReachabilityTests(unittest.TestCase):
         # docs/skills/printing-base.md): a build-time artifact lane, not an image.
         roots.add("printing/base.bst")
         roots.add("printing/foomatic-db.bst")
+        # The shared printing runtime layer, published as a real OCI base
+        # layer (#342), not a devel CAS bundle: docs/skills/printing-base.md.
+        roots.add("oci/printing-runtime-layer.bst")
         project_conf = (ROOT / "project.conf").read_text(encoding="utf-8")
         roots |= set(JUNCTION_RE.findall(project_conf))
         cls.reachable = dependency_closure(roots)
