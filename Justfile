@@ -218,7 +218,7 @@ validate:
         ELEMENTS+=("oci/${img}.bst")
     done < <(just image-list)
     for arch in x86_64 aarch64; do
-        just bst -o arch "${arch}" show --deps all "${ELEMENTS[@]}" podman-vm/podman-vm-efi.bst printing/base.bst printing/foomatic-db.bst oci/printing-runtime-layer.bst
+        just bst -o arch "${arch}" show --deps all "${ELEMENTS[@]}" podman-vm/podman-vm-efi.bst printing/base.bst printing/foomatic-db.bst printing/mutool.bst oci/printing-runtime-layer.bst
     done
 
 # ── Build ─────────────────────────────────────────────────────────────
