@@ -305,7 +305,7 @@ the 180-minute job timeout before the leg reports red.
 
 ```just
 for attempt in 1 2 3 4 5; do
-    if just bst source fetch --deps all "oci/{{image_name}}.bst"; then
+    if just bst source fetch gnome-build-meta.bst; then
         break
     fi
     echo "bst source fetch failed (attempt ${attempt}/5)" >&2

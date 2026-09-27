@@ -237,9 +237,9 @@ validate:
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "==> Fetching sources for oci/{{image_name}}.bst..."
+    echo "==> Fetching gnome-build-meta junction..."
     for attempt in 1 2 3 4 5; do
-        if just bst source fetch --deps all "oci/{{image_name}}.bst"; then
+        if just bst source fetch gnome-build-meta.bst; then
             break
         fi
         echo "bst source fetch failed (attempt ${attempt}/5)" >&2
@@ -789,9 +789,7 @@ printing-base-bundle TAG:
     # patch moved (foomatic-db). Only those built artifacts are bundled.
     # Consumers pull the rest from the same remotes, so no `--deps all` pull is
     # needed. Sources come from cache.projectbluefin.io or upstream, because
-    # the FSDK source cache stalls. No `--network-retries` here: it only retries
-    # errors raised with temporary=True, which the git_repo source plugin never
-    # does (see docs/skills/ci-tooling/SKILL.md).
+    # the FSDK source cache stalls.
     targets=(printing/base.bst printing/foomatic-db.bst)
     # --network-retries only covers errors marked temporary by the plugin.
     # git_repo fetch failures use SourceError(temporary=False), so this flag
